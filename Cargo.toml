@@ -1,6 +1,6 @@
 [package]
 name = "alertmanager-silences-slack-reporter"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["f9n <f9n@protonmail.com>"]
 description = "A tool to fetch Alertmanager silences and report them to Slack"
