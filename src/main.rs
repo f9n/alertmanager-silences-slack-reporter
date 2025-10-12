@@ -6,28 +6,13 @@ use serde::{Deserialize, Serialize};
 #[command(name = "alertmanager-silences-slack-reporter")]
 #[command(about = "Fetch Alertmanager silences and report them to Slack", long_about = None)]
 struct Args {
-    #[arg(
-        short = 'a',
-        long,
-        env = "ALERTMANAGER_URL",
-        help = "Alertmanager URL"
-    )]
+    #[arg(short = 'a', long, env = "ALERTMANAGER_URL", help = "Alertmanager URL")]
     alertmanager_url: String,
 
-    #[arg(
-        short = 't',
-        long,
-        env = "SLACK_BOT_TOKEN",
-        help = "Slack bot token"
-    )]
+    #[arg(short = 't', long, env = "SLACK_BOT_TOKEN", help = "Slack bot token")]
     slack_bot_token: String,
 
-    #[arg(
-        short = 'c',
-        long,
-        env = "SLACK_CHANNEL_ID",
-        help = "Slack channel ID"
-    )]
+    #[arg(short = 'c', long, env = "SLACK_CHANNEL_ID", help = "Slack channel ID")]
     slack_channel: String,
 }
 
@@ -88,17 +73,14 @@ struct SlackText {
 fn fetch_silences(alertmanager_url: &str) -> Result<Vec<Silence>> {
     let url = format!("{}/api/v2/silences", alertmanager_url);
     let client = reqwest::blocking::Client::new();
-    
+
     let response = client
         .get(&url)
         .send()
         .context("Failed to send request to Alertmanager")?;
 
     if !response.status().is_success() {
-        anyhow::bail!(
-            "Alertmanager returned error status: {}",
-            response.status()
-        );
+        anyhow::bail!("Alertmanager returned error status: {}", response.status());
     }
 
     let silences: Vec<Silence> = response
@@ -109,14 +91,12 @@ fn fetch_silences(alertmanager_url: &str) -> Result<Vec<Silence>> {
 }
 
 fn format_slack_message(silences: &[Silence]) -> SlackMessage {
-    let mut blocks = vec![
-        SlackBlock::Header {
-            text: SlackText {
-                text_type: "plain_text".to_string(),
-                text: "Alertmanager Silences Report".to_string(),
-            },
+    let mut blocks = vec![SlackBlock::Header {
+        text: SlackText {
+            text_type: "plain_text".to_string(),
+            text: "Alertmanager Silences Report".to_string(),
         },
-    ];
+    }];
 
     let mut active_count = 0;
     let mut expired_count = 0;
@@ -203,7 +183,7 @@ fn format_timestamp(timestamp: &str) -> String {
 
 fn send_to_slack(token: &str, channel: &str, message: &SlackMessage) -> Result<()> {
     let client = reqwest::blocking::Client::new();
-    
+
     #[derive(Serialize)]
     struct SlackApiMessage<'a> {
         channel: &'a str,
@@ -242,7 +222,9 @@ fn send_to_slack(token: &str, channel: &str, message: &SlackMessage) -> Result<(
     if !slack_response.ok {
         anyhow::bail!(
             "Slack API returned error: {}",
-            slack_response.error.unwrap_or_else(|| "unknown error".to_string())
+            slack_response
+                .error
+                .unwrap_or_else(|| "unknown error".to_string())
         );
     }
 
@@ -305,4 +287,3 @@ mod tests {
         assert!(message.blocks.len() > 3);
     }
 }
-
