@@ -2,11 +2,6 @@ FROM rust:1.90-slim as builder
 
 WORKDIR /app
 
-# Install dependencies
-RUN apt-get update && \
-    apt-get install -y pkg-config libssl-dev && \
-    rm -rf /var/lib/apt/lists/*
-
 # Copy manifests
 COPY Cargo.toml ./
 
@@ -19,7 +14,7 @@ RUN cargo build --release
 # Runtime stage
 FROM debian:bookworm-slim
 
-# Install ca-certificates for HTTPS
+# Install ca-certificates for HTTPS (rustls needs these)
 RUN apt-get update && \
     apt-get install -y ca-certificates && \
     rm -rf /var/lib/apt/lists/*
