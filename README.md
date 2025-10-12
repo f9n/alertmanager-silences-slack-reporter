@@ -9,53 +9,59 @@ A command-line tool that fetches silence configurations from Alertmanager and se
 - Access to an Alertmanager instance
 - A Slack bot token with appropriate permissions
 
-## Installation
+## Installation & Usage
 
-### Building from Source
+### Option 1: Docker (Recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/f9n/alertmanager-silences-slack-reporter.git
-cd alertmanager-silences-slack-reporter
-
-# Build the project in release mode
-cargo build --release
-
-# The binary will be available at
-./target/release/alertmanager-silences-slack-reporter
+docker run --rm \
+  -e ALERTMANAGER_URL="http://alertmanager:9093" \
+  -e SLACK_BOT_TOKEN="xoxb-your-token" \
+  -e SLACK_CHANNEL_ID="C01234ABCDE" \
+  ghcr.io/f9n/alertmanager-silences-slack-reporter:latest
 ```
 
-## Usage
-
-### Command Line Arguments
-
+Use a specific version:
 ```bash
-alertmanager-silences-slack-reporter \
-  --alertmanager-url http://alertmanager.example.com:9093 \
-  --slack-bot-token xoxb-your-bot-token \
-  --slack-channel-id C01234ABCDE
+docker run --rm \
+  -e ALERTMANAGER_URL="http://alertmanager:9093" \
+  -e SLACK_BOT_TOKEN="xoxb-your-token" \
+  -e SLACK_CHANNEL_ID="C01234ABCDE" \
+  ghcr.io/f9n/alertmanager-silences-slack-reporter:1.0.0
 ```
 
-### Short Form
+### Option 2: Pre-built Binary
+
+Download and run:
 
 ```bash
-alertmanager-silences-slack-reporter \
-  -a http://alertmanager.example.com:9093 \
-  -t xoxb-your-bot-token \
+# Linux AMD64
+wget https://github.com/f9n/alertmanager-silences-slack-reporter/releases/latest/download/alertmanager-silences-slack-reporter-linux-amd64.tar.gz
+tar xzf alertmanager-silences-slack-reporter-linux-amd64.tar.gz
+
+# Run with environment variables
+export ALERTMANAGER_URL="http://alertmanager:9093"
+export SLACK_BOT_TOKEN="xoxb-your-token"
+export SLACK_CHANNEL_ID="C01234ABCDE"
+./alertmanager-silences-slack-reporter
+
+# Or with command line arguments
+./alertmanager-silences-slack-reporter \
+  -a http://alertmanager:9093 \
+  -t xoxb-your-token \
   -c C01234ABCDE
 ```
 
-### Environment Variables
+### Option 3: Build from Source
 
 ```bash
-export ALERTMANAGER_URL="http://alertmanager.example.com:9093"
-export SLACK_BOT_TOKEN="xoxb-your-bot-token"
-export SLACK_CHANNEL_ID="C01234ABCDE"
-
-alertmanager-silences-slack-reporter
+git clone https://github.com/f9n/alertmanager-silences-slack-reporter.git
+cd alertmanager-silences-slack-reporter
+cargo build --release
+./target/release/alertmanager-silences-slack-reporter --help
 ```
 
-### Options
+### Available Options
 
 - `-a, --alertmanager-url <URL>`: Alertmanager base URL (env: `ALERTMANAGER_URL`)
 - `-t, --slack-bot-token <TOKEN>`: Slack bot token (env: `SLACK_BOT_TOKEN`)
