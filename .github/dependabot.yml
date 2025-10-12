@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    labels:
+      - dependencies
+      - actions
+      - Skip Changelog
+    schedule:
+      interval: weekly
+      day: sunday
+
+  - package-ecosystem: cargo
+    directory: /
+    labels:
+      - dependencies
+      - rust
+      - Skip Changelog
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+

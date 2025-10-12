@@ -1,3 +1,25 @@
-.zig-cache/
-zig-out/
-*.o
+# Rust build artifacts
+target/
+Cargo.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Keep images directory but ignore macOS metadata
+!.github/images/
+.github/images/.DS_Store
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# Test artifacts
+test-results/
