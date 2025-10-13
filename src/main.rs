@@ -52,7 +52,7 @@ struct SlackMessage {
     blocks: Vec<SlackBlock>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 enum SlackBlock {
     #[serde(rename = "header")]
@@ -63,11 +63,23 @@ enum SlackBlock {
     Divider {},
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct SlackText {
     #[serde(rename = "type")]
     text_type: String,
     text: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SlackApiMessage {
+    channel: String,
+    blocks: Vec<SlackBlock>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlackApiResponse {
+    ok: bool,
+    error: Option<String>,
 }
 
 fn fetch_silences(alertmanager_url: &str) -> Result<Vec<Silence>> {
@@ -90,14 +102,15 @@ fn fetch_silences(alertmanager_url: &str) -> Result<Vec<Silence>> {
     Ok(silences)
 }
 
-fn format_slack_message(silences: &[Silence]) -> SlackMessage {
-    let mut blocks = vec![SlackBlock::Header {
-        text: SlackText {
-            text_type: "plain_text".to_string(),
-            text: "Alertmanager Silences Report".to_string(),
-        },
-    }];
-
+fn format_slack_messages(silences: &[Silence]) -> Vec<SlackMessage> {
+    // Slack has a 50 block limit per message
+    // Header (1) + Summary Section (1) + Divider (1) = 3 blocks used
+    // Each silence uses 2 blocks (Section + Divider)
+    // We can safely show up to 23 silences per message: (50 - 3) / 2 = 23
+    const MAX_SILENCES_PER_MESSAGE: usize = 23;
+    
+    let mut messages = Vec::new();
+    
     let mut active_count = 0;
     let mut expired_count = 0;
     let mut pending_count = 0;
@@ -111,64 +124,96 @@ fn format_slack_message(silences: &[Silence]) -> SlackMessage {
         }
     }
 
-    let summary = format!(
-        "*Total:* {} | *Active:* {} | *Pending:* {} | *Expired:* {}",
-        silences.len(),
-        active_count,
-        pending_count,
-        expired_count
-    );
+    // Split silences into chunks (or create one empty chunk if no silences)
+    let chunks: Vec<&[Silence]> = if silences.is_empty() {
+        vec![&[]]
+    } else {
+        silences.chunks(MAX_SILENCES_PER_MESSAGE).collect()
+    };
+    let total_parts = chunks.len();
 
-    blocks.push(SlackBlock::Section {
-        text: SlackText {
-            text_type: "mrkdwn".to_string(),
-            text: summary,
-        },
-    });
-
-    blocks.push(SlackBlock::Divider {});
-
-    for silence in silences {
-        let matchers_list = silence
-            .matchers
-            .iter()
-            .map(|m| {
-                let operator = if m.is_equal { "=" } else { "!=" };
-                let regex_marker = if m.is_regex { "~" } else { "" };
-                format!("  • `{}{}{}{}`", m.name, operator, regex_marker, m.value)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let mut text = format!(
-            "*Status:* {}, *CreatedBy:* {}, *Date:* {} → {}\n*Matchers:*\n{}",
-            silence.status.state,
-            silence.created_by,
-            format_timestamp(&silence.starts_at),
-            format_timestamp(&silence.ends_at),
-            matchers_list
-        );
-
-        if !silence.comment.is_empty() && silence.comment != "-" && silence.comment != "." {
-            let comment_preview = if silence.comment.len() > 100 {
-                format!("{}...", &silence.comment[..100])
-            } else {
-                silence.comment.clone()
-            };
-            text.push_str(&format!("\n*Comment:* _{}_", comment_preview));
-        }
-
-        blocks.push(SlackBlock::Section {
+    for (part_num, chunk) in chunks.iter().enumerate() {
+        let mut blocks = vec![];
+        
+        // Header with part number if multiple parts
+        let header_text = if total_parts > 1 {
+            format!("Alertmanager Silences Report (Part {}/{})", part_num + 1, total_parts)
+        } else {
+            "Alertmanager Silences Report".to_string()
+        };
+        
+        blocks.push(SlackBlock::Header {
             text: SlackText {
-                text_type: "mrkdwn".to_string(),
-                text,
+                text_type: "plain_text".to_string(),
+                text: header_text,
             },
         });
 
+        // Add summary only to first message
+        if part_num == 0 {
+            let summary = format!(
+                "*Total:* {} | *Active:* {} | *Pending:* {} | *Expired:* {}",
+                silences.len(),
+                active_count,
+                pending_count,
+                expired_count
+            );
+
+            blocks.push(SlackBlock::Section {
+                text: SlackText {
+                    text_type: "mrkdwn".to_string(),
+                    text: summary,
+                },
+            });
+        }
+
         blocks.push(SlackBlock::Divider {});
+
+        // Add silences for this chunk
+        for silence in *chunk {
+            let matchers_list = silence
+                .matchers
+                .iter()
+                .map(|m| {
+                    let operator = if m.is_equal { "=" } else { "!=" };
+                    let regex_marker = if m.is_regex { "~" } else { "" };
+                    format!("  • `{}{}{}{}`", m.name, operator, regex_marker, m.value)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let mut text = format!(
+                "*Status:* {}\n*Date:* {} → {}\n*CreatedBy:* {}\n*Matchers:*\n{}",
+                silence.status.state,
+                format_timestamp(&silence.starts_at),
+                format_timestamp(&silence.ends_at),
+                silence.created_by,
+                matchers_list
+            );
+
+            if !silence.comment.is_empty() && silence.comment != "-" && silence.comment != "." {
+                let comment_preview = if silence.comment.len() > 100 {
+                    format!("{}...", &silence.comment[..100])
+                } else {
+                    silence.comment.clone()
+                };
+                text.push_str(&format!("\n*Comment:* _{}_", comment_preview));
+            }
+
+            blocks.push(SlackBlock::Section {
+                text: SlackText {
+                    text_type: "mrkdwn".to_string(),
+                    text,
+                },
+            });
+
+            blocks.push(SlackBlock::Divider {});
+        }
+
+        messages.push(SlackMessage { blocks });
     }
 
-    SlackMessage { blocks }
+    messages
 }
 
 fn format_timestamp(timestamp: &str) -> String {
@@ -184,15 +229,9 @@ fn format_timestamp(timestamp: &str) -> String {
 fn send_to_slack(token: &str, channel: &str, message: &SlackMessage) -> Result<()> {
     let client = reqwest::blocking::Client::new();
 
-    #[derive(Serialize)]
-    struct SlackApiMessage<'a> {
-        channel: &'a str,
-        blocks: &'a [SlackBlock],
-    }
-
     let api_message = SlackApiMessage {
-        channel,
-        blocks: &message.blocks,
+        channel: channel.to_string(),
+        blocks: message.blocks.clone(),
     };
 
     let response = client
@@ -207,12 +246,6 @@ fn send_to_slack(token: &str, channel: &str, message: &SlackMessage) -> Result<(
         let status = response.status();
         let body = response.text().unwrap_or_default();
         anyhow::bail!("Slack API returned error status {}: {}", status, body);
-    }
-
-    #[derive(Deserialize)]
-    struct SlackApiResponse {
-        ok: bool,
-        error: Option<String>,
     }
 
     let slack_response: SlackApiResponse = response
@@ -243,11 +276,21 @@ fn main() -> Result<()> {
 
     println!("Found {} silence(s)", silences.len());
 
-    let message = format_slack_message(&silences);
+    let messages = format_slack_messages(&silences);
 
-    send_to_slack(&args.slack_bot_token, &args.slack_channel, &message)?;
+    println!("Sending {} message(s) to Slack", messages.len());
 
-    println!("Report sent to Slack successfully");
+    for (i, message) in messages.iter().enumerate() {
+        send_to_slack(&args.slack_bot_token, &args.slack_channel, message)?;
+        println!("Message {}/{} sent successfully", i + 1, messages.len());
+        
+        // Small delay between messages to avoid rate limiting
+        if i < messages.len() - 1 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
+    println!("All reports sent to Slack successfully");
 
     Ok(())
 }
@@ -257,14 +300,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_format_slack_message_empty() {
+    fn test_format_slack_messages_empty() {
         let silences = vec![];
-        let message = format_slack_message(&silences);
-        assert!(message.blocks.len() >= 3);
+        let messages = format_slack_messages(&silences);
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].blocks.len() >= 3);
     }
 
     #[test]
-    fn test_format_slack_message_with_data() {
+    fn test_format_slack_messages_with_data() {
         let silences = vec![Silence {
             id: "test-id-123".to_string(),
             status: SilenceStatus {
@@ -283,7 +327,35 @@ mod tests {
             comment: "Test comment".to_string(),
         }];
 
-        let message = format_slack_message(&silences);
-        assert!(message.blocks.len() > 3);
+        let messages = format_slack_messages(&silences);
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].blocks.len() > 3);
+    }
+
+    #[test]
+    fn test_format_slack_messages_multiple_parts() {
+        // Create 50 silences to test message splitting
+        let silences: Vec<Silence> = (0..50)
+            .map(|i| Silence {
+                id: format!("test-id-{}", i),
+                status: SilenceStatus {
+                    state: "active".to_string(),
+                },
+                matchers: vec![Matcher {
+                    name: "alertname".to_string(),
+                    value: format!("TestAlert{}", i),
+                    is_regex: false,
+                    is_equal: true,
+                }],
+                starts_at: "2024-01-01T00:00:00Z".to_string(),
+                ends_at: "2024-01-02T00:00:00Z".to_string(),
+                updated_at: "2024-01-01T00:00:00Z".to_string(),
+                created_by: "test-user".to_string(),
+                comment: "Test comment".to_string(),
+            })
+            .collect();
+
+        let messages = format_slack_messages(&silences);
+        assert_eq!(messages.len(), 3); // 50 silences should create 3 messages (23 + 23 + 4)
     }
 }
