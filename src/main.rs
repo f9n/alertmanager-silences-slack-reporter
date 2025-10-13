@@ -108,9 +108,9 @@ fn format_slack_messages(silences: &[Silence]) -> Vec<SlackMessage> {
     // Each silence uses 2 blocks (Section + Divider)
     // We can safely show up to 23 silences per message: (50 - 3) / 2 = 23
     const MAX_SILENCES_PER_MESSAGE: usize = 23;
-    
+
     let mut messages = Vec::new();
-    
+
     let mut active_count = 0;
     let mut expired_count = 0;
     let mut pending_count = 0;
@@ -134,14 +134,18 @@ fn format_slack_messages(silences: &[Silence]) -> Vec<SlackMessage> {
 
     for (part_num, chunk) in chunks.iter().enumerate() {
         let mut blocks = vec![];
-        
+
         // Header with part number if multiple parts
         let header_text = if total_parts > 1 {
-            format!("Alertmanager Silences Report (Part {}/{})", part_num + 1, total_parts)
+            format!(
+                "Alertmanager Silences Report (Part {}/{})",
+                part_num + 1,
+                total_parts
+            )
         } else {
             "Alertmanager Silences Report".to_string()
         };
-        
+
         blocks.push(SlackBlock::Header {
             text: SlackText {
                 text_type: "plain_text".to_string(),
@@ -283,7 +287,7 @@ fn main() -> Result<()> {
     for (i, message) in messages.iter().enumerate() {
         send_to_slack(&args.slack_bot_token, &args.slack_channel, message)?;
         println!("Message {}/{} sent successfully", i + 1, messages.len());
-        
+
         // Small delay between messages to avoid rate limiting
         if i < messages.len() - 1 {
             std::thread::sleep(std::time::Duration::from_millis(100));
